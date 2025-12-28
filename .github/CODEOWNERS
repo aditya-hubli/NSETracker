@@ -1,0 +1,27 @@
+# ==============================================
+# Code Owners - Auto-assign reviewers
+# ==============================================
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owner for everything
+* @aditya-hubli
+
+# Infrastructure
+/infra/ @aditya-hubli
+/docker-compose*.yml @aditya-hubli
+/.github/ @aditya-hubli
+
+# Python services
+/services/user-service/ @aditya-hubli
+/services/order-service/ @aditya-hubli
+/services/payment-service/ @aditya-hubli
+/services/stream-processor/ @aditya-hubli
+/services/analytics-api/ @aditya-hubli
+/shared/ @aditya-hubli
+
+# Dashboard
+/services/dashboard/ @aditya-hubli
+
+# Documentation
+*.md @aditya-hubli
+/docs/ @aditya-hubli
