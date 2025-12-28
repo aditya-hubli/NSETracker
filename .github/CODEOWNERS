@@ -1,0 +1,26 @@
+# ==============================================
+# Code Owners - Real-Time Event-Driven Platform
+# ==============================================
+# These owners will be requested for review when
+# someone opens a pull request that modifies code.
+# ==============================================
+
+# Default owner for everything
+* @aditya-hubli
+
+# Shared modules
+/shared/ @aditya-hubli
+
+# Infrastructure
+/infra/ @aditya-hubli
+
+# Services (to be added)
+# /services/ @aditya-hubli
+
+# Dashboard (to be added)
+# /dashboard/ @aditya-hubli
+
+# CI/CD and DevOps
+/.github/ @aditya-hubli
+/Makefile @aditya-hubli
+/pyproject.toml @aditya-hubli
