@@ -1,0 +1,233 @@
+version: '3.8'
+
+# =============================================================================
+# Real-Time Event-Driven Data Platform - Docker Compose
+# =============================================================================
+# This configuration orchestrates all microservices for local development
+# and can be adapted for cloud deployment (AWS ECS, GCP Cloud Run, Azure ACI)
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # API Gateway - Main entry point for all API requests
+  # ---------------------------------------------------------------------------
+  api-gateway:
+    build:
+      context: .
+      dockerfile: services/api_gateway/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=development
+      - USER_SERVICE_URL=http://user-service:8001
+      - ANALYTICS_SERVICE_URL=http://analytics-service:8002
+      - SENTIMENT_SERVICE_URL=http://sentiment-service:8003
+      - STOCK_SERVICE_URL=http://stock-service:8004
+      - NOTIFICATION_SERVICE_URL=http://notification-service:8005
+    depends_on:
+      - user-service
+      - analytics-service
+      - sentiment-service
+      - stock-service
+    networks:
+      - platform-network
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # User Service - Authentication and user management
+  # ---------------------------------------------------------------------------
+  user-service:
+    build:
+      context: .
+      dockerfile: services/user_service/Dockerfile
+    ports:
+      - "8001:8001"
+    environment:
+      - ENVIRONMENT=development
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+    networks:
+      - platform-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ---------------------------------------------------------------------------
+  # Analytics Service - Technical analysis and ML predictions
+  # ---------------------------------------------------------------------------
+  analytics-service:
+    build:
+      context: .
+      dockerfile: services/analytics_service/Dockerfile
+    ports:
+      - "8002:8002"
+    environment:
+      - ENVIRONMENT=development
+      - ML_MODEL_PATH=/app/models
+      - ENABLE_ML_PREDICTIONS=false  # Set to true when ML models are deployed
+    volumes:
+      # Mount ML models volume (populated during deployment)
+      - ml-models:/app/models:ro
+    networks:
+      - platform-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ---------------------------------------------------------------------------
+  # Sentiment Service - News sentiment analysis with NLP
+  # ---------------------------------------------------------------------------
+  sentiment-service:
+    build:
+      context: .
+      dockerfile: services/sentiment_service/Dockerfile
+    ports:
+      - "8003:8003"
+    environment:
+      - ENVIRONMENT=development
+      - NEWS_API_KEY=${NEWS_API_KEY:-}
+      - ML_MODEL_PATH=/app/models
+      - ENABLE_ML_SENTIMENT=false  # Set to true when FinBERT is deployed
+    volumes:
+      # Mount ML models volume (for FinBERT, custom models)
+      - ml-models:/app/models:ro
+    networks:
+      - platform-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ---------------------------------------------------------------------------
+  # Stock Service - Real-time stock data provider
+  # ---------------------------------------------------------------------------
+  stock-service:
+    build:
+      context: .
+      dockerfile: services/stock_service/Dockerfile
+    ports:
+      - "8004:8004"
+    environment:
+      - ENVIRONMENT=development
+      - CACHE_TTL=60
+    networks:
+      - platform-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ---------------------------------------------------------------------------
+  # Notification Service - Alerts and notifications
+  # ---------------------------------------------------------------------------
+  notification-service:
+    build:
+      context: .
+      dockerfile: services/notification_service/Dockerfile
+    ports:
+      - "8005:8005"
+    environment:
+      - ENVIRONMENT=development
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+    networks:
+      - platform-network
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Redpanda - Event streaming (Kafka-compatible)
+  # ---------------------------------------------------------------------------
+  redpanda:
+    image: redpandadata/redpanda:latest
+    container_name: redpanda
+    command:
+      - redpanda
+      - start
+      - --smp 1
+      - --memory 512M
+      - --reserve-memory 0M
+      - --overprovisioned
+      - --node-id 0
+      - --kafka-addr PLAINTEXT://0.0.0.0:29092,OUTSIDE://0.0.0.0:9092
+      - --advertise-kafka-addr PLAINTEXT://redpanda:29092,OUTSIDE://localhost:9092
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    networks:
+      - platform-network
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD", "rpk", "cluster", "health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
+  # Redpanda Console - Event streaming UI
+  # ---------------------------------------------------------------------------
+  redpanda-console:
+    image: redpandadata/console:latest
+    container_name: redpanda-console
+    ports:
+      - "8080:8080"
+    environment:
+      - KAFKA_BROKERS=redpanda:29092
+    depends_on:
+      - redpanda
+    networks:
+      - platform-network
+
+  # ---------------------------------------------------------------------------
+  # Dashboard - Next.js Frontend
+  # ---------------------------------------------------------------------------
+  dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NEXT_PUBLIC_SUPABASE_URL=${SUPABASE_URL}
+      - NEXT_PUBLIC_SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+    depends_on:
+      - api-gateway
+    networks:
+      - platform-network
+    restart: unless-stopped
+
+# =============================================================================
+# Networks
+# =============================================================================
+networks:
+  platform-network:
+    driver: bridge
+
+# =============================================================================
+# Volumes
+# =============================================================================
+volumes:
+  redpanda-data:
+    driver: local
+  ml-models:
+    driver: local
+    # This volume will store ML models (FinBERT, LSTM, etc.)
+    # In cloud deployment, this can be replaced with:
+    # - AWS S3 mounted via s3fs
+    # - GCP GCS via gcsfuse
+    # - Azure Blob via blobfuse

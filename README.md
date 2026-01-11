@@ -1,182 +1,239 @@
-# Real-Time Event-Driven Data Platform
+# Real-Time Stock Data Platform
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A scalable, real-time data platform built with FastAPI, Redpanda, Supabase, and Next.js.
+A professional real-time stock data platform built with FastAPI, Next.js, and Supabase. Features user and admin dashboards with authentication.
 
-## 🌟 Overview
+## Overview
 
-This platform demonstrates modern event-driven architecture patterns for processing and analyzing real-time data streams. It features:
+This platform provides real-time stock market data visualization with role-based access control:
 
-- **Event-Driven Architecture**: Loosely coupled services communicating via message broker
-- **Real-Time Processing**: Stream processing with Redpanda (Kafka-compatible)
-- **Modern Stack**: FastAPI, Next.js, PostgreSQL (Supabase)
-- **Production Ready**: CI/CD, testing, monitoring, Docker containers
+- **User Dashboard**: Search stocks, view real-time prices, manage watchlists
+- **Admin Dashboard**: User management, platform analytics, system settings
+- **Real-Time Data**: Live stock quotes powered by Yahoo Finance API
+- **Modern Stack**: FastAPI backend, Next.js frontend, JWT authentication
 
-## 🏗️ Architecture
+## Features
 
-```
-┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-│   User      │    │   Order     │    │  Payment    │
-│  Service    │───▶│  Service    │───▶│  Service    │
-└──────┬──────┘    └──────┬──────┘    └──────┬──────┘
-       │                  │                  │
-       ▼                  ▼                  ▼
-┌──────────────────────────────────────────────────┐
-│                   Redpanda                        │
-│              (Message Broker)                     │
-└──────────────────────────────────────────────────┘
-       │                  │                  │
-       ▼                  ▼                  ▼
-┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-│   Stream    │    │  Analytics  │    │  Supabase   │
-│  Processor  │───▶│    API      │◀───│ (PostgreSQL)│
-└─────────────┘    └──────┬──────┘    └─────────────┘
-                          │
-                          ▼
-                   ┌─────────────┐
-                   │   Next.js   │
-                   │  Dashboard  │
-                   └─────────────┘
-```
+### User Features
+- Real-time stock quotes and price tracking
+- Stock search with instant results
+- Personal watchlists (create, manage, delete)
+- Price history charts and market data
+- User settings and preferences
 
-## 🛠️ Tech Stack
+### Sentiment Analysis (NEW)
+- News sentiment from multiple sources
+- Reddit/social media sentiment tracking
+- Trending stocks based on mentions
+- Sentiment classification (bullish/bearish)
+- Real-time sentiment updates
+
+### Technical Analytics (NEW)
+- Technical indicators (SMA, EMA, MACD, RSI, Bollinger Bands)
+- Trading signals (Strong Buy to Strong Sell)
+- Volume analysis and unusual activity detection
+- Volatility metrics and ATR
+- Support/Resistance level detection
+- Stock screener with multiple criteria
+- Market heatmap visualization
+
+### Alerts & Notifications (NEW)
+- Price alerts (above/below/percent change)
+- Real-time WebSocket notifications
+- News alerts and sentiment shifts
+- Volume spike detection
+- Push notifications
+
+### Admin Features
+- Platform overview dashboard with key metrics
+- User management (view, create, manage users)
+- Platform analytics and usage statistics
+- System settings configuration
+- API monitoring
+
+## Tech Stack
 
 | Component | Technology | Purpose |
 |-----------|------------|---------|
-| Backend Services | FastAPI (Python 3.11+) | REST APIs & event producers |
-| Message Broker | Redpanda | Kafka-compatible streaming |
-| Database | Supabase (PostgreSQL) | Persistent storage |
-| Frontend | Next.js (TypeScript) | Real-time dashboard |
-| Infrastructure | Docker, Railway | Containerization & hosting |
-| CI/CD | GitHub Actions | Automated testing & deployment |
+| Backend | FastAPI (Python 3.11+) | REST APIs & authentication |
+| Stock Data | yfinance | Real-time market data |
+| Database | Supabase (PostgreSQL) | User and data storage |
+| Frontend | Next.js 14 (TypeScript) | Modern React dashboard |
+| Styling | Tailwind CSS | Dark theme UI |
+| Auth | JWT tokens | Session management |
+| Caching | In-memory (cachetools) | Request caching |
+| Messaging | Kafka/Redpanda | Event streaming & pub/sub |
+| Sentiment | VADER, TextBlob | NLP sentiment analysis |
+| Technical | TA-Lib, Pandas | Technical indicators |
+| Real-time | WebSockets | Live updates |
 
-## 📁 Project Structure
+## Project Structure
 
 ```
-├── services/              # Microservices
-│   ├── user-service/      # User management
-│   ├── order-service/     # Order processing
-│   ├── payment-service/   # Payment handling
-│   ├── stream-processor/  # Event stream processing
-│   └── analytics-api/     # Analytics & reporting
-├── shared/                # Shared Python modules
-│   ├── config.py          # Configuration management
-│   ├── schemas.py         # Pydantic models
-│   ├── exceptions.py      # Custom exceptions
-│   └── logging_config.py  # Structured logging
-├── dashboard/             # Next.js frontend
-├── infra/                 # Infrastructure configs
-│   └── supabase/          # Database schemas
-├── .github/               # GitHub Actions workflows
-└── docs/                  # Documentation
+project/
+├── services/                 # Backend microservices
+│   ├── api_gateway.py        # Unified API entry point
+│   ├── user_service/         # Authentication & user management
+│   ├── stock_service/        # Real-time stock data (Yahoo Finance)
+│   ├── sentiment_service/    # News & social sentiment analysis (NEW)
+│   ├── analytics_service/    # Technical indicators & screening (NEW)
+│   ├── notification_service/ # Alerts & WebSocket updates (NEW)
+│   ├── order_service/        # Order management
+│   └── payment_service/      # Payment processing
+├── shared/                   # Shared Python modules
+│   ├── config.py             # Configuration
+│   ├── schemas.py            # Pydantic models
+│   ├── exceptions.py         # Custom exceptions
+│   ├── cache.py              # In-memory caching
+│   └── events.py             # Redpanda event streaming
+├── dashboard/                # Next.js frontend
+│   └── src/
+│       ├── app/              # App router pages
+│       │   ├── dashboard/    # User dashboard
+│       │   ├── admin/        # Admin dashboard
+│       │   ├── login/        # Authentication
+│       │   └── register/
+│       ├── components/       # React components
+│       │   ├── layout/       # Layout components
+│       │   ├── stocks/       # Stock-related components
+│       │   ├── sentiment/    # Sentiment displays (NEW)
+│       │   ├── analytics/    # Technical analysis (NEW)
+│       │   └── notifications/# Alerts & notifications (NEW)
+│       ├── contexts/         # React contexts (Auth)
+│       └── lib/              # API & auth utilities
+└── infra/                    # Infrastructure
+    └── supabase/             # Database schemas
 ```
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 
 - Python 3.11+
-- Node.js 20+ (for dashboard)
-- Docker & Docker Compose
-- Make (optional, for convenience commands)
+- Node.js 20+
+- Supabase account (free tier works)
 
-### Installation
-
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/aditya-hubli/Real-Time-Event-Driven-Data-Platform.git
-   cd Real-Time-Event-Driven-Data-Platform
-   ```
-
-2. **Set up environment**
-   ```bash
-   cp .env.example .env
-   # Edit .env with your Supabase credentials
-   ```
-
-3. **Install dependencies**
-   ```bash
-   # Create virtual environment
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-   # Install Python dependencies
-   pip install -e .
-   ```
-
-4. **Run tests**
-   ```bash
-   make test
-   # Or: pytest shared/tests/ -v
-   ```
-
-5. **Start services** (coming soon)
-   ```bash
-   make docker-up
-   ```
-
-## 🧪 Development
-
-### Available Commands
+### Backend Setup
 
 ```bash
-make help          # Show all available commands
-make lint          # Run linter
-make format        # Format code
-make test          # Run tests
-make test-cov      # Run tests with coverage
-make clean         # Clean cache files
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+
+# Install dependencies
+pip install -e .
+
+# Set environment variables
+cp .env.example .env
+# Edit .env with your Supabase credentials
+
+# Run API Gateway
+python -m services.api_gateway
+```
+
+The API will be available at `http://localhost:8000`
+
+### Frontend Setup
+
+```bash
+cd dashboard
+
+# Install dependencies
+npm install
+
+# Set environment variable
+echo "NEXT_PUBLIC_API_URL=http://localhost:8000" > .env.local
+
+# Run development server
+npm run dev
+```
+
+The dashboard will be available at `http://localhost:3000`
+
+### Demo Login
+
+Use these credentials to test the platform:
+
+| Role | Email | Password |
+|------|-------|----------|
+| User | user@example.com | password123 |
+| Admin | admin@example.com | password123 |
+
+## API Endpoints
+
+### Authentication
+- `POST /api/v1/auth/login` - User login
+- `POST /api/v1/auth/register` - User registration
+- `POST /api/v1/auth/logout` - User logout
+- `GET /api/v1/auth/me` - Get current user
+
+### Stock Data
+- `GET /api/v1/stocks/quote/{symbol}` - Get stock quote
+- `GET /api/v1/stocks/quotes?symbols=...` - Get multiple quotes
+- `GET /api/v1/stocks/history/{symbol}` - Get price history
+- `GET /api/v1/stocks/search?q=...` - Search stocks
+- `GET /api/v1/stocks/market/summary` - Market summary
+- `GET /api/v1/stocks/market/movers` - Top gainers/losers
+
+### Sentiment Analysis (NEW)
+- `GET /api/v1/sentiment/stock/{symbol}` - Get comprehensive sentiment
+- `GET /api/v1/sentiment/trending` - Get trending stocks
+- `GET /api/v1/sentiment/news/{symbol}` - Get news with sentiment
+- `GET /api/v1/sentiment/social/{symbol}` - Get social media posts
+
+### Technical Analytics (NEW)
+- `GET /api/v1/analytics/indicators/{symbol}` - Get technical indicators
+- `GET /api/v1/analytics/signal/{symbol}` - Get trading signal
+- `GET /api/v1/analytics/volume/{symbol}` - Volume analysis
+- `GET /api/v1/analytics/volatility/{symbol}` - Volatility metrics
+- `GET /api/v1/analytics/analysis/{symbol}` - Full technical analysis
+- `POST /api/v1/analytics/screener` - Stock screener
+- `GET /api/v1/analytics/heatmap` - Market heatmap data
+
+### Notifications & Alerts (NEW)
+- `WS /api/v1/notifications/ws/{user_id}` - Real-time WebSocket
+- `POST /api/v1/notifications/alerts` - Create price alert
+- `GET /api/v1/notifications/alerts` - Get user alerts
+- `DELETE /api/v1/notifications/alerts/{id}` - Cancel alert
+- `GET /api/v1/notifications/` - Get notifications
+- `POST /api/v1/notifications/{id}/read` - Mark as read
+- `GET /api/v1/notifications/unread-count` - Unread count
+
+### Users
+- `GET /api/v1/users/` - List users
+- `POST /api/v1/users/` - Create user
+- `GET /api/v1/users/{id}` - Get user
+- `PUT /api/v1/users/{id}` - Update user
+- `DELETE /api/v1/users/{id}` - Delete user
+
+## Development
+
+### Running Tests
+
+```bash
+# Run all tests
+make test
+# Or: pytest -v
+
+# Run with coverage
+make test-cov
 ```
 
 ### Code Quality
 
-This project uses:
-- **ruff** for linting and formatting
-- **pytest** for testing
-- **pre-commit** hooks for automated checks
-
 ```bash
-# Install pre-commit hooks
-pre-commit install
-
-# Run checks manually
-pre-commit run --all-files
+make lint          # Run linter
+make format        # Format code
 ```
 
-## 📖 Documentation
-
-- [Setup Guide](SETUP_GUIDE.md) - Detailed setup instructions
-- [API Documentation](docs/api.md) - API reference (coming soon)
-- [Architecture](docs/architecture.md) - System design (coming soon)
-
-## 🗺️ Roadmap
-
-- [x] Project setup & CI/CD
-- [ ] User Service
-- [ ] Order Service
-- [ ] Payment Service
-- [ ] Redpanda integration
-- [ ] Stream Processor
-- [ ] Analytics API
-- [ ] Next.js Dashboard
-- [ ] Railway deployment
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit changes (`git commit -m 'Add amazing feature'`)
-4. Push to branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## 📄 License
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 👤 Author
+## Author
 
 **Aditya Hubli**
 - GitHub: [@aditya-hubli](https://github.com/aditya-hubli)

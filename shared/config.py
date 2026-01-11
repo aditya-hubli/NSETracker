@@ -79,6 +79,94 @@ class Settings(BaseSettings):
         description="Log output format",
     )
 
+    # In-Memory Cache Configuration
+    cache_ttl: int = Field(
+        default=300,
+        description="Default cache TTL in seconds",
+    )
+    cache_max_size: int = Field(
+        default=1000,
+        description="Maximum number of items in cache",
+    )
+
+    # Kafka/Redpanda Event Streaming
+    kafka_brokers: str = Field(
+        default="localhost:9092",
+        description="Comma-separated list of Kafka/Redpanda brokers",
+    )
+    kafka_consumer_group: str = Field(
+        default="stock-platform",
+        description="Kafka consumer group ID",
+    )
+
+    # External API Keys
+    news_api_key: str = Field(
+        default="",
+        description="NewsAPI.org API key",
+    )
+    reddit_client_id: str = Field(
+        default="",
+        description="Reddit API client ID",
+    )
+    reddit_client_secret: str = Field(
+        default="",
+        description="Reddit API client secret",
+    )
+    twitter_bearer_token: str = Field(
+        default="",
+        description="Twitter API bearer token",
+    )
+
+    # JWT Configuration
+    jwt_secret_key: str = Field(
+        default="your-secret-key-change-in-production",
+        description="Secret key for JWT tokens",
+    )
+    jwt_algorithm: str = Field(
+        default="HS256",
+        description="JWT signing algorithm",
+    )
+    jwt_expiration_hours: int = Field(
+        default=24,
+        description="JWT token expiration in hours",
+    )
+
+    # Email Configuration
+    smtp_host: str = Field(
+        default="smtp.gmail.com",
+        description="SMTP server host",
+    )
+    smtp_port: int = Field(
+        default=587,
+        description="SMTP server port",
+    )
+    smtp_username: str = Field(
+        default="",
+        description="SMTP username/email",
+    )
+    smtp_password: str = Field(
+        default="",
+        description="SMTP password or app-specific password",
+    )
+    smtp_from_email: str = Field(
+        default="",
+        description="From email address for notifications",
+    )
+    smtp_from_name: str = Field(
+        default="Stock Platform Alerts",
+        description="From name for email notifications",
+    )
+    email_enabled: bool = Field(
+        default=False,
+        description="Enable email notifications",
+    )
+    
+    # Resend API (simpler alternative to SMTP)
+    resend_api_key: str = Field(
+        default="",
+        description="Resend API key for sending emails",
+    )
+
     @field_validator("log_level")
     @classmethod
     def validate_log_level(cls, v: str) -> str:

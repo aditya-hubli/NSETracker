@@ -43,9 +43,10 @@ app.add_middleware(
 
 
 # Import routes after app creation to avoid circular imports
-from services.user_service.routes import router  # noqa: E402
+from services.user_service.routes import auth_router, router  # noqa: E402
 
 app.include_router(router, prefix="/api/v1")
+app.include_router(auth_router, prefix="/api/v1")
 
 
 @app.get("/health")

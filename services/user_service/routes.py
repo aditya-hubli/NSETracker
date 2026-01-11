@@ -1,9 +1,12 @@
 """User Service API Routes."""
 
 import hashlib
+import secrets
+from datetime import datetime, timedelta
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, status
+from pydantic import BaseModel, EmailStr
 
 from services.user_service.database import user_repository
 from services.user_service.models import User, UserCreate, UserUpdate
@@ -14,6 +17,33 @@ from shared.schemas import EventType, UserEvent
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/users", tags=["users"])
+auth_router = APIRouter(prefix="/auth", tags=["authentication"])
+
+# Simple in-memory token store (in production, use Redis or database)
+_tokens: dict[str, dict] = {}
+
+
+class LoginRequest(BaseModel):
+    """Login request model."""
+
+    email: EmailStr
+    password: str
+
+
+class RegisterRequest(BaseModel):
+    """Register request model."""
+
+    email: EmailStr
+    username: str
+    full_name: str | None = None
+    password: str
+
+
+class AuthResponse(BaseModel):
+    """Authentication response model."""
+
+    user: dict
+    token: str
 
 
 def hash_password(password: str) -> str:
@@ -22,6 +52,215 @@ def hash_password(password: str) -> str:
     Note: In production, use bcrypt or argon2.
     """
     return hashlib.sha256(password.encode()).hexdigest()
+
+
+def generate_token() -> str:
+    """Generate a secure random token."""
+    return secrets.token_urlsafe(32)
+
+
+def verify_token(token: str) -> dict | None:
+    """Verify a token and return the user data if valid."""
+    token_data = _tokens.get(token)
+    if not token_data:
+        return None
+    if datetime.utcnow() > token_data["expires_at"]:
+        del _tokens[token]
+        return None
+    return token_data["user"]
+
+
+@auth_router.post("/login", response_model=AuthResponse)
+async def login(credentials: LoginRequest) -> AuthResponse:
+    """Login user and return token.
+
+    Args:
+        credentials: Login credentials
+
+    Returns:
+        User data and authentication token
+
+    Raises:
+        HTTPException: If credentials are invalid
+    """
+    try:
+        # Get user by email
+        user_data = await user_repository.get_by_email(credentials.email)
+        if not user_data:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid email or password",
+            )
+
+        # Verify password
+        hashed = hash_password(credentials.password)
+        if user_data.get("hashed_password") != hashed:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid email or password",
+            )
+
+        # Check if user is active
+        if not user_data.get("is_active", True):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Account is deactivated",
+            )
+
+        # Generate token
+        token = generate_token()
+
+        # Determine role (simple check - in production use proper roles table)
+        role = "admin" if user_data["email"].endswith("@admin.com") else "user"
+
+        # Store token with user data
+        user_response = {
+            "id": user_data["id"],
+            "email": user_data["email"],
+            "username": user_data["username"],
+            "full_name": user_data.get("full_name"),
+            "role": role,
+            "is_active": user_data.get("is_active", True),
+        }
+
+        _tokens[token] = {
+            "user": user_response,
+            "expires_at": datetime.utcnow() + timedelta(hours=24),
+        }
+
+        logger.info(f"User logged in: {user_data['email']}")
+
+        return AuthResponse(user=user_response, token=token)
+
+    except HTTPException:
+        raise
+    except DatabaseError as e:
+        logger.error(f"Database error during login: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Login failed",
+        ) from e
+
+
+@auth_router.post("/register", response_model=AuthResponse)
+async def register(data: RegisterRequest) -> AuthResponse:
+    """Register a new user and return token.
+
+    Args:
+        data: Registration data
+
+    Returns:
+        User data and authentication token
+
+    Raises:
+        HTTPException: If registration fails
+    """
+    # Check if email already exists
+    existing = await user_repository.get_by_email(data.email)
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Email already registered",
+        )
+
+    try:
+        # Create user
+        user_dict = {
+            "email": data.email,
+            "username": data.username,
+            "full_name": data.full_name,
+            "hashed_password": hash_password(data.password),
+        }
+
+        created = await user_repository.create(user_dict)
+
+        # Generate token
+        token = generate_token()
+
+        # Determine role
+        role = "admin" if data.email.endswith("@admin.com") else "user"
+
+        # Store token
+        user_response = {
+            "id": created["id"],
+            "email": created["email"],
+            "username": created["username"],
+            "full_name": created.get("full_name"),
+            "role": role,
+            "is_active": created.get("is_active", True),
+        }
+
+        _tokens[token] = {
+            "user": user_response,
+            "expires_at": datetime.utcnow() + timedelta(hours=24),
+        }
+
+        # Log event
+        event = UserEvent(
+            event_type=EventType.USER_CREATED,
+            user_id=UUID(created["id"]),
+            email=created["email"],
+            username=created["username"],
+            action="register",
+            source="user-service",
+        )
+        logger.info(f"User registered: {event.event_id}")
+
+        return AuthResponse(user=user_response, token=token)
+
+    except DatabaseError as e:
+        logger.error(f"Failed to register user: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Registration failed",
+        ) from e
+
+
+@auth_router.post("/logout")
+async def logout(token: str | None = None) -> dict:
+    """Logout user by invalidating token.
+
+    Args:
+        token: Authentication token
+
+    Returns:
+        Success message
+    """
+    if token and token in _tokens:
+        del _tokens[token]
+    return {"message": "Logged out successfully"}
+
+
+@auth_router.get("/me")
+async def get_current_user(authorization: str | None = None) -> dict:
+    """Get current authenticated user.
+
+    Args:
+        authorization: Authorization header
+
+    Returns:
+        User data
+
+    Raises:
+        HTTPException: If not authenticated
+    """
+    if not authorization:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+        )
+
+    # Extract token from Bearer header
+    token = authorization.replace("Bearer ", "") if authorization.startswith("Bearer ") else authorization
+
+    user = verify_token(token)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+        )
+
+    return user
 
 
 @router.post("/", response_model=User, status_code=status.HTTP_201_CREATED)
