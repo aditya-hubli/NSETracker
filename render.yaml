@@ -59,7 +59,7 @@ services:
         value: NSE Stock Tracker
       # CORS
       - key: CORS_ORIGINS
-        sync: false  # Will be set to frontend URL
+        value: https://stock-platform-dashboard.onrender.com,http://localhost:3000
 
   # ============================================
   # Next.js Dashboard (Frontend)
