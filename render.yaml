@@ -77,10 +77,7 @@ services:
       - key: NODE_VERSION
         value: "20"
       - key: NEXT_PUBLIC_API_URL
-        fromService:
-          name: stock-platform-api
-          type: web
-          property: host
+        value: https://stock-platform-api-g5e9.onrender.com
       - key: NEXT_PUBLIC_SUPABASE_URL
         sync: false
       - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
