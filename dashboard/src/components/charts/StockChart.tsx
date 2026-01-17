@@ -119,9 +119,10 @@ export default function StockChart({
       setError(null);
 
       try {
+        const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
         const { period } = INTERVAL_MAP[interval];
         const response = await fetch(
-          `http://localhost:8000/api/v1/stocks/history/${encodeURIComponent(symbol)}?period=${period}`
+          `${API_BASE_URL}/api/v1/stocks/history/${encodeURIComponent(symbol)}?period=${period}`
         );
 
         if (!response.ok) throw new Error('Failed to fetch data');
