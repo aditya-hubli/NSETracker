@@ -86,8 +86,11 @@ class NewsFetcher:
         articles = []
         
         try:
+            print(f"Fetching yfinance news for {symbol}...")
             ticker = yf.Ticker(symbol)
             news = ticker.news
+            
+            print(f"yfinance returned {len(news) if news else 0} articles for {symbol}")
             
             if news:
                 for item in news[:max_articles]:
@@ -139,7 +142,10 @@ class NewsFetcher:
                         articles.append(article)
         except Exception as e:
             print(f"Error fetching yfinance news for {symbol}: {e}")
+            import traceback
+            traceback.print_exc()
         
+        print(f"Returning {len(articles)} articles from yfinance for {symbol}")
         return articles
     
     async def _fetch_google_news(
@@ -156,16 +162,21 @@ class NewsFetcher:
         articles = []
         
         try:
+            print(f"Fetching Google News for query: {query}")
             client = await self._get_client()
             encoded_query = quote(f"{query} stock NSE BSE")
             url = f"https://news.google.com/rss/search?q={encoded_query}&hl=en-IN&gl=IN&ceid=IN:en"
             
             response = await client.get(url)
+            print(f"Google News response status: {response.status_code}")
             if response.status_code == 200:
                 text = response.text
                 articles = self._parse_rss(text, max_articles)
+                print(f"Parsed {len(articles)} articles from Google News")
         except Exception as e:
             print(f"Error fetching Google News for {query}: {e}")
+            import traceback
+            traceback.print_exc()
         
         return articles
     
