@@ -27,7 +27,7 @@ router = APIRouter(prefix="/notifications", tags=["notifications"])
 def get_db():
     """Get database client."""
     settings = get_settings()
-    client = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
+    client = create_client(settings.supabase_url, settings.supabase_anon_key)
     return NotificationDatabase(client)
 
 
@@ -96,25 +96,35 @@ async def create_alert(
     - percent_up: Trigger when price increases by target %
     - percent_down: Trigger when price decreases by target %
     """
-    # Get current price for reference
-    import yfinance as yf
-    ticker = yf.Ticker(request.symbol.upper())
-    current_price = ticker.fast_info.last_price
-    
-    alert = PriceAlert(
-        user_id=user_id,
-        symbol=request.symbol.upper(),
-        condition=request.condition,
-        target_value=request.target_value,
-        current_price=current_price,
-        message=request.message,
-        expires_at=(
-            datetime.utcnow() + timedelta(days=request.expires_in_days)
-            if request.expires_in_days else None
+    try:
+        # Get current price for reference (optional)
+        current_price = None
+        try:
+            import yfinance as yf
+            ticker = yf.Ticker(request.symbol.upper())
+            current_price = ticker.fast_info.last_price
+        except Exception as e:
+            print(f"Warning: Could not fetch current price for {request.symbol}: {e}")
+        
+        alert = PriceAlert(
+            user_id=user_id,
+            symbol=request.symbol.upper(),
+            condition=request.condition,
+            target_value=request.target_value,
+            current_price=current_price,
+            message=request.message,
+            expires_at=(
+                datetime.utcnow() + timedelta(days=request.expires_in_days)
+                if request.expires_in_days else None
+            )
         )
-    )
-    
-    return await db.create_alert(alert)
+        
+        return await db.create_alert(alert)
+    except Exception as e:
+        import traceback
+        print(f"Error creating alert: {e}")
+        print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/alerts", response_model=list[PriceAlert])
@@ -247,11 +257,16 @@ async def send_test_email(request: TestEmailRequest):
     if not email_service.is_configured:
         return {
             "success": False,
-            "message": "Email not configured. Add RESEND_API_KEY to your .env file (get one free at resend.com)",
+            "message": "Email not configured. Add SMTP settings to your .env file.",
             "required_vars": [
                 "EMAIL_ENABLED=true",
-                "RESEND_API_KEY=re_xxxxxxxxx",
-            ]
+                "SMTP_HOST=smtp.gmail.com",
+                "SMTP_PORT=587",
+                "SMTP_USERNAME=your_email@gmail.com",
+                "SMTP_PASSWORD=your_app_password",
+                "SMTP_FROM_EMAIL=your_email@gmail.com",
+            ],
+            "tip": "For Gmail, use an App Password (not your regular password). Go to Google Account > Security > 2-Step Verification > App passwords"
         }
     
     success = email_service.send_test_email(request.email)
@@ -259,7 +274,7 @@ async def send_test_email(request: TestEmailRequest):
     if success:
         return {"success": True, "message": f"Test email sent to {request.email}"}
     else:
-        return {"success": False, "message": "Failed to send test email. Check your API key."}
+        return {"success": False, "message": "Failed to send test email. Check your SMTP credentials."}
 
 
 @router.get("/email/status")
@@ -270,9 +285,80 @@ async def get_email_status():
     
     return {
         "configured": email_service.is_configured,
-        "smtp_host": settings.smtp_host,
-        "smtp_port": settings.smtp_port,
-        "from_email": settings.smtp_from_email or "(not set)",
-        "enabled": settings.email_enabled,
+        "provider": "SMTP" if email_service._use_smtp else ("Resend" if settings.resend_api_key else "None"),
+        "smtp_host": settings.smtp_host if email_service.is_configured else None,
+        "from_email": settings.smtp_from_email if email_service.is_configured else None
     }
 
+
+class MarketAlertRequest(BaseModel):
+    email: str
+
+
+class DailyDigestRequest(BaseModel):
+    email: str
+    user_name: str = "Investor"
+    watchlist_stocks: list = []
+
+
+@router.post("/email/market-open")
+async def send_market_open_email(request: MarketAlertRequest):
+    """Send market open notification email."""
+    email_service = get_email_service()
+    
+    if not email_service.is_configured:
+        return {"success": False, "message": "Email not configured"}
+    
+    success = email_service.send_market_open_alert(request.email)
+    
+    if success:
+        return {"success": True, "message": f"Market open alert sent to {request.email}"}
+    else:
+        return {"success": False, "message": "Failed to send market open alert"}
+
+
+@router.post("/email/market-close")
+async def send_market_close_email(request: MarketAlertRequest):
+    """Send market close notification email."""
+    email_service = get_email_service()
+    
+    if not email_service.is_configured:
+        return {"success": False, "message": "Email not configured"}
+    
+    # Optional: Fetch market summary for the email
+    market_summary = {
+        "nifty": {"price": 24850.75, "change_percent": 0.85},
+        "sensex": {"price": 82150.30, "change_percent": 0.72}
+    }
+    
+    success = email_service.send_market_close_alert(request.email, market_summary)
+    
+    if success:
+        return {"success": True, "message": f"Market close alert sent to {request.email}"}
+    else:
+        return {"success": False, "message": "Failed to send market close alert"}
+
+
+@router.post("/email/daily-digest")
+async def send_daily_digest_email(request: DailyDigestRequest):
+    """Send daily digest email with watchlist summary."""
+    email_service = get_email_service()
+    
+    if not email_service.is_configured:
+        return {"success": False, "message": "Email not configured"}
+    
+    # Sample watchlist data if none provided
+    watchlist = request.watchlist_stocks if request.watchlist_stocks else [
+        {"symbol": "RELIANCE", "name": "Reliance Industries Ltd", "price": 2550.75, "change_percent": 1.25},
+        {"symbol": "TCS", "name": "Tata Consultancy Services", "price": 3875.50, "change_percent": -0.45},
+        {"symbol": "INFY", "name": "Infosys Limited", "price": 1856.25, "change_percent": 0.82},
+        {"symbol": "HDFCBANK", "name": "HDFC Bank Limited", "price": 1725.80, "change_percent": 1.15},
+        {"symbol": "ICICIBANK", "name": "ICICI Bank Limited", "price": 1280.40, "change_percent": -0.32},
+    ]
+    
+    success = email_service.send_daily_digest(request.email, watchlist, request.user_name)
+    
+    if success:
+        return {"success": True, "message": f"Daily digest sent to {request.email}"}
+    else:
+        return {"success": False, "message": "Failed to send daily digest"}

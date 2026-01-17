@@ -1,6 +1,10 @@
-"""Event streaming with Kafka/Redpanda for real-time data processing."""
+"""Event streaming with Kafka (Aiven/Redpanda) for real-time data processing."""
 import asyncio
+import base64
 import json
+import os
+import ssl
+import tempfile
 from datetime import datetime
 from enum import Enum
 from typing import Any, Callable, Optional
@@ -9,6 +13,86 @@ from aiokafka import AIOKafkaProducer, AIOKafkaConsumer
 from pydantic import BaseModel, Field
 
 from .config import get_settings
+
+
+def _get_cert_path(file_path: str, base64_content: str, filename: str) -> str:
+    """Get certificate path - use file if exists, otherwise decode base64."""
+    # First check if file path is provided and exists
+    if file_path and os.path.exists(file_path):
+        return file_path
+    
+    # Otherwise decode base64 and write to temp file
+    if base64_content:
+        try:
+            decoded = base64.b64decode(base64_content)
+            temp_dir = tempfile.gettempdir()
+            filepath = os.path.join(temp_dir, filename)
+            with open(filepath, "wb") as f:
+                f.write(decoded)
+            return filepath
+        except Exception as e:
+            print(f"Failed to decode {filename}: {e}")
+    
+    return ""
+
+
+def get_kafka_ssl_context(settings) -> Optional[ssl.SSLContext]:
+    """Create SSL context for Kafka connection with client certificate support."""
+    if settings.kafka_security_protocol not in ("SSL", "SASL_SSL"):
+        return None
+    
+    ssl_context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
+    ssl_context.check_hostname = True
+    ssl_context.verify_mode = ssl.CERT_REQUIRED
+    
+    # Get CA certificate path (file or base64)
+    ca_path = _get_cert_path(
+        settings.kafka_ssl_ca_location,
+        getattr(settings, 'kafka_ssl_ca_base64', ''),
+        'kafka_ca.pem'
+    )
+    if ca_path:
+        ssl_context.load_verify_locations(ca_path)
+    
+    # Get client certificate and key paths
+    cert_path = _get_cert_path(
+        settings.kafka_ssl_cert_location,
+        getattr(settings, 'kafka_ssl_cert_base64', ''),
+        'kafka_cert.pem'
+    )
+    key_path = _get_cert_path(
+        settings.kafka_ssl_key_location,
+        getattr(settings, 'kafka_ssl_key_base64', ''),
+        'kafka_key.pem'
+    )
+    
+    # Load client certificate and key for mTLS
+    if cert_path and key_path:
+        ssl_context.load_cert_chain(certfile=cert_path, keyfile=key_path)
+    
+    return ssl_context
+
+
+def get_kafka_config(settings, extra_config: dict = None) -> dict:
+    """Build Kafka connection config with SSL/SASL if needed."""
+    config = {"bootstrap_servers": settings.kafka_brokers}
+    
+    if settings.kafka_security_protocol != "PLAINTEXT":
+        config["security_protocol"] = settings.kafka_security_protocol
+        
+        ssl_context = get_kafka_ssl_context(settings)
+        if ssl_context:
+            config["ssl_context"] = ssl_context
+        
+        if settings.kafka_security_protocol in ("SASL_SSL", "SASL_PLAINTEXT"):
+            config["sasl_mechanism"] = settings.kafka_sasl_mechanism
+            config["sasl_plain_username"] = settings.kafka_sasl_username
+            config["sasl_plain_password"] = settings.kafka_sasl_password
+    
+    if extra_config:
+        config.update(extra_config)
+    
+    return config
 
 
 class EventType(str, Enum):
@@ -54,7 +138,7 @@ class Event(BaseModel):
 
 
 class EventProducer:
-    """Kafka/Redpanda event producer."""
+    """Kafka event producer with SSL/SASL support."""
     
     def __init__(self):
         self._producer: Optional[AIOKafkaProducer] = None
@@ -63,11 +147,11 @@ class EventProducer:
     async def start(self) -> None:
         """Start the producer."""
         if self._producer is None:
-            self._producer = AIOKafkaProducer(
-                bootstrap_servers=self._settings.kafka_brokers,
-                value_serializer=lambda v: json.dumps(v, default=str).encode('utf-8'),
-                key_serializer=lambda k: k.encode('utf-8') if k else None,
-            )
+            config = get_kafka_config(self._settings, {
+                "value_serializer": lambda v: json.dumps(v, default=str).encode('utf-8'),
+                "key_serializer": lambda k: k.encode('utf-8') if k else None,
+            })
+            self._producer = AIOKafkaProducer(**config)
             await self._producer.start()
             print(f"Event producer started, connected to {self._settings.kafka_brokers}")
     
@@ -162,7 +246,7 @@ class EventProducer:
 
 
 class EventConsumer:
-    """Kafka/Redpanda event consumer."""
+    """Kafka event consumer with SSL/SASL support."""
     
     def __init__(self, group_id: Optional[str] = None):
         self._consumer: Optional[AIOKafkaConsumer] = None
@@ -184,13 +268,12 @@ class EventConsumer:
     async def start(self, topics: list[str]) -> None:
         """Start consuming from topics."""
         if self._consumer is None:
-            self._consumer = AIOKafkaConsumer(
-                *topics,
-                bootstrap_servers=self._settings.kafka_brokers,
-                group_id=self._group_id,
-                value_deserializer=lambda m: json.loads(m.decode('utf-8')),
-                auto_offset_reset='latest',
-            )
+            config = get_kafka_config(self._settings, {
+                "group_id": self._group_id,
+                "value_deserializer": lambda m: json.loads(m.decode('utf-8')),
+                "auto_offset_reset": 'latest',
+            })
+            self._consumer = AIOKafkaConsumer(*topics, **config)
             await self._consumer.start()
             self._running = True
             print(f"Event consumer started, subscribed to {topics}")

@@ -242,7 +242,7 @@ export default function SettingsPage() {
                   </div>
                 )}
                 <p className="text-xs text-gray-500">
-                  Get a free API key from <a href="https://resend.com" target="_blank" rel="noopener noreferrer" className="text-emerald-600 hover:underline">resend.com</a> and add RESEND_API_KEY to your .env file.
+                  Configure SMTP settings (Gmail, Outlook, etc.) in your .env file. For Gmail, use an App Password.
                 </p>
               </div>
             )}

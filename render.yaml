@@ -1,0 +1,87 @@
+# Render Blueprint - NSE Stock Tracker Platform
+# https://render.com/docs/blueprint-spec
+
+services:
+  # ============================================
+  # API Gateway (Main Backend)
+  # ============================================
+  - type: web
+    name: stock-platform-api
+    runtime: python
+    region: singapore  # Closest to India for NSE stocks
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m uvicorn services.api_gateway:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11"
+      - key: ENVIRONMENT
+        value: production
+      - key: DEBUG
+        value: "false"
+      - key: LOG_LEVEL
+        value: INFO
+      # Supabase
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      # Kafka (Aiven)
+      - key: KAFKA_BROKERS
+        sync: false
+      - key: KAFKA_SECURITY_PROTOCOL
+        value: SSL
+      - key: KAFKA_SSL_CA
+        sync: false  # Base64 encoded ca.pem content
+      - key: KAFKA_SSL_CERT
+        sync: false  # Base64 encoded service.cert content
+      - key: KAFKA_SSL_KEY
+        sync: false  # Base64 encoded service.key content
+      # Email
+      - key: EMAIL_ENABLED
+        value: "true"
+      - key: SMTP_HOST
+        value: smtp.gmail.com
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USERNAME
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_FROM_EMAIL
+        sync: false
+      - key: SMTP_FROM_NAME
+        value: NSE Stock Tracker
+      # CORS
+      - key: CORS_ORIGINS
+        sync: false  # Will be set to frontend URL
+
+  # ============================================
+  # Next.js Dashboard (Frontend)
+  # ============================================
+  - type: web
+    name: stock-platform-dashboard
+    runtime: node
+    region: singapore
+    plan: free
+    rootDir: dashboard
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: NEXT_PUBLIC_API_URL
+        fromService:
+          name: stock-platform-api
+          type: web
+          property: host
+      - key: NEXT_PUBLIC_SUPABASE_URL
+        sync: false
+      - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
+        sync: false

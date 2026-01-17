@@ -173,16 +173,21 @@ export function useWebSocket(options?: UseWebSocketOptions): UseWebSocketReturn 
     });
   }, []);
 
-  // Auto-connect on mount
+  // Auto-connect on mount or when userId changes
   useEffect(() => {
-    if (autoConnect) {
+    if (autoConnect && userId) {
+      // Disconnect existing connection if userId changed
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
       connect();
     }
 
     return () => {
       disconnect();
     };
-  }, [autoConnect, connect, disconnect]);
+  }, [autoConnect, userId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return {
     isConnected,

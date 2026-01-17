@@ -15,6 +15,7 @@ from .models import (
 )
 from .database import NotificationDatabase
 from .websocket_manager import manager
+from .email_service import get_email_service
 
 
 class AlertChecker:
@@ -147,7 +148,46 @@ class AlertChecker:
             )
         )
         
+        # Send email notification
+        await self._send_email_notification(alert, current_price)
+        
         print(f"Alert triggered for {alert.user_id}: {alert.symbol} at ${current_price:.2f}")
+    
+    async def _send_email_notification(self, alert: PriceAlert, current_price: float):
+        """Send email notification for triggered alert."""
+        try:
+            email_service = get_email_service()
+            
+            if not email_service.is_configured:
+                print("Email service not configured, skipping email notification")
+                return
+            
+            # Get user email from database
+            result = self.db.db.table("users").select("email").eq("id", alert.user_id).execute()
+            
+            if not result.data:
+                print(f"Could not find email for user {alert.user_id}")
+                return
+            
+            user_email = result.data[0]["email"]
+            
+            # Send the alert email
+            success = email_service.send_price_alert(
+                to_email=user_email,
+                symbol=alert.symbol,
+                condition=alert.condition.value,
+                target_value=alert.target_value,
+                current_price=current_price,
+                message=alert.message
+            )
+            
+            if success:
+                print(f"Email notification sent to {user_email} for {alert.symbol}")
+            else:
+                print(f"Failed to send email to {user_email}")
+                
+        except Exception as e:
+            print(f"Error sending email notification: {e}")
     
     async def _fetch_prices(self, symbols: list[str]) -> dict[str, Optional[float]]:
         """Fetch current prices for multiple symbols."""

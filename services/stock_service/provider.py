@@ -192,18 +192,31 @@ async def get_market_summary() -> MarketSummary:
         if idx.symbol in INDEX_NAMES:
             idx.name = INDEX_NAMES[idx.symbol]
     
-    # Determine market status (simplified - US markets)
+    # Determine market status for Indian markets (NSE/BSE)
+    # Market hours: 9:15 AM - 3:30 PM IST, Monday-Friday
     now = datetime.utcnow()
-    hour = now.hour
-    weekday = now.weekday()
     
-    if weekday >= 5:  # Weekend
+    # Convert UTC to IST (UTC + 5:30)
+    utc_minutes = now.hour * 60 + now.minute
+    ist_minutes = utc_minutes + 330  # Add 5 hours 30 minutes
+    
+    # Handle day rollover
+    ist_day = now.weekday()
+    if ist_minutes >= 1440:  # More than 24 hours worth of minutes
+        ist_minutes -= 1440
+        ist_day = (ist_day + 1) % 7
+    
+    market_open = 9 * 60 + 15   # 9:15 AM IST = 555 minutes
+    market_close = 15 * 60 + 30  # 3:30 PM IST = 930 minutes
+    pre_market_start = 9 * 60    # 9:00 AM IST
+    
+    if ist_day >= 5:  # Weekend (Saturday=5, Sunday=6)
         status = MarketStatus.CLOSED
-    elif 13 <= hour < 21:  # 9:30 AM - 4:00 PM ET (roughly)
+    elif market_open <= ist_minutes <= market_close:
         status = MarketStatus.OPEN
-    elif 9 <= hour < 13:
+    elif pre_market_start <= ist_minutes < market_open:
         status = MarketStatus.PRE_MARKET
-    elif 21 <= hour < 24:
+    elif market_close < ist_minutes < market_close + 60:  # 1 hour after close
         status = MarketStatus.AFTER_HOURS
     else:
         status = MarketStatus.CLOSED

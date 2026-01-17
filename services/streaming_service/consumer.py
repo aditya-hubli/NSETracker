@@ -1,18 +1,20 @@
-"""Stock price consumer - consumes from Redpanda and broadcasts via WebSocket."""
+"""Stock price consumer - consumes from Kafka (Aiven/Redpanda) and broadcasts via WebSocket."""
 
 import asyncio
+import ssl
 from typing import Optional, Callable, Any
 import json
 
 from aiokafka import AIOKafkaConsumer
 
 from shared.config import get_settings
+from shared.events import get_kafka_ssl_context
 
 TOPIC_STOCK_PRICES = "stock-prices"
 
 
 class StockPriceConsumer:
-    """Consumes stock prices from Redpanda and broadcasts to WebSocket clients."""
+    """Consumes stock prices from Kafka (Aiven/Redpanda) and broadcasts to WebSocket clients."""
     
     def __init__(self, on_message: Optional[Callable[[dict], Any]] = None):
         self.settings = get_settings()
@@ -34,13 +36,35 @@ class StockPriceConsumer:
     async def start(self) -> bool:
         """Start the consumer."""
         try:
-            self._consumer = AIOKafkaConsumer(
-                TOPIC_STOCK_PRICES,
-                bootstrap_servers=self.settings.kafka_brokers,
-                group_id="websocket-broadcaster",
-                value_deserializer=lambda m: json.loads(m.decode('utf-8')),
-                auto_offset_reset='latest',
-            )
+            # Build Kafka connection config
+            kafka_config = {
+                "bootstrap_servers": self.settings.kafka_brokers,
+                "group_id": f"websocket-broadcaster-{id(self)}",
+                "value_deserializer": lambda m: json.loads(m.decode('utf-8')),
+                "auto_offset_reset": 'latest',
+                "enable_auto_commit": True,
+                "auto_commit_interval_ms": 5000,
+                "session_timeout_ms": 30000,
+                "heartbeat_interval_ms": 10000,
+                "max_poll_interval_ms": 300000,
+            }
+            
+            # Add security config for Aiven/cloud Kafka
+            if self.settings.kafka_security_protocol != "PLAINTEXT":
+                kafka_config["security_protocol"] = self.settings.kafka_security_protocol
+                
+                # SSL context
+                ssl_context = get_kafka_ssl_context(self.settings)
+                if ssl_context:
+                    kafka_config["ssl_context"] = ssl_context
+                
+                # SASL authentication
+                if self.settings.kafka_security_protocol in ("SASL_SSL", "SASL_PLAINTEXT"):
+                    kafka_config["sasl_mechanism"] = self.settings.kafka_sasl_mechanism
+                    kafka_config["sasl_plain_username"] = self.settings.kafka_sasl_username
+                    kafka_config["sasl_plain_password"] = self.settings.kafka_sasl_password
+            
+            self._consumer = AIOKafkaConsumer(TOPIC_STOCK_PRICES, **kafka_config)
             await self._consumer.start()
             self._running = True
             print(f"Stock price consumer connected to {self.settings.kafka_brokers}")
@@ -76,36 +100,41 @@ class StockPriceConsumer:
         
         print("Stock price consumer started listening...")
         
-        try:
-            async for msg in self._consumer:
-                if not self._running:
-                    break
-                
-                try:
-                    data = msg.value
+        while self._running:
+            try:
+                async for msg in self._consumer:
+                    if not self._running:
+                        break
                     
-                    # Call registered handlers
-                    for handler in self._handlers:
-                        try:
-                            if asyncio.iscoroutinefunction(handler):
-                                await handler(data)
+                    try:
+                        data = msg.value
+                        
+                        # Call registered handlers
+                        for handler in self._handlers:
+                            try:
+                                if asyncio.iscoroutinefunction(handler):
+                                    await handler(data)
+                                else:
+                                    handler(data)
+                            except Exception as e:
+                                print(f"Handler error: {e}")
+                        
+                        # Call legacy on_message callback
+                        if self._on_message:
+                            if asyncio.iscoroutinefunction(self._on_message):
+                                await self._on_message(data)
                             else:
-                                handler(data)
-                        except Exception as e:
-                            print(f"Handler error: {e}")
-                    
-                    # Call legacy on_message callback
-                    if self._on_message:
-                        if asyncio.iscoroutinefunction(self._on_message):
-                            await self._on_message(data)
-                        else:
-                            self._on_message(data)
-                            
-                except Exception as e:
-                    print(f"Error processing message: {e}")
-                    
-        except asyncio.CancelledError:
-            pass
+                                self._on_message(data)
+                                
+                    except Exception as e:
+                        print(f"Error processing message: {e}")
+                        
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                # Log error and continue - don't crash
+                print(f"Consumer loop error (will retry): {e}")
+                await asyncio.sleep(2)  # Wait before retrying
 
 
 # Global consumer instance

@@ -4,11 +4,30 @@ This module uses Pydantic Settings to manage configuration
 from environment variables with type validation.
 """
 
+import base64
+import os
+import tempfile
 from functools import lru_cache
 from typing import Literal
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _write_cert_from_env(env_var: str, filename: str) -> str:
+    """Write base64-encoded certificate from env var to temp file, return path."""
+    content = os.environ.get(env_var, "")
+    if not content:
+        return ""
+    try:
+        decoded = base64.b64decode(content)
+        temp_dir = tempfile.gettempdir()
+        filepath = os.path.join(temp_dir, filename)
+        with open(filepath, "wb") as f:
+            f.write(decoded)
+        return filepath
+    except Exception:
+        return ""
 
 
 class Settings(BaseSettings):
@@ -97,6 +116,47 @@ class Settings(BaseSettings):
     kafka_consumer_group: str = Field(
         default="stock-platform",
         description="Kafka consumer group ID",
+    )
+    kafka_security_protocol: str = Field(
+        default="PLAINTEXT",
+        description="Kafka security protocol (PLAINTEXT, SSL, SASL_SSL, SASL_PLAINTEXT)",
+    )
+    kafka_sasl_mechanism: str = Field(
+        default="PLAIN",
+        description="SASL mechanism (PLAIN, SCRAM-SHA-256, SCRAM-SHA-512)",
+    )
+    kafka_sasl_username: str = Field(
+        default="",
+        description="SASL username for Kafka authentication",
+    )
+    kafka_sasl_password: str = Field(
+        default="",
+        description="SASL password for Kafka authentication",
+    )
+    kafka_ssl_ca_location: str = Field(
+        default="",
+        description="Path to CA certificate file for SSL",
+    )
+    kafka_ssl_cert_location: str = Field(
+        default="",
+        description="Path to client certificate file for SSL",
+    )
+    kafka_ssl_key_location: str = Field(
+        default="",
+        description="Path to client key file for SSL",
+    )
+    # Base64-encoded certificates for cloud deployment
+    kafka_ssl_ca_base64: str = Field(
+        default="",
+        description="Base64-encoded CA certificate for cloud deployment",
+    )
+    kafka_ssl_cert_base64: str = Field(
+        default="",
+        description="Base64-encoded client certificate for cloud deployment",
+    )
+    kafka_ssl_key_base64: str = Field(
+        default="",
+        description="Base64-encoded client key for cloud deployment",
     )
 
     # External API Keys

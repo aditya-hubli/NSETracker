@@ -1,7 +1,15 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { searchStocks, SearchResult, getStockQuote } from '@/lib/api';
+import { useState, useEffect, useCallback } from 'react';
+import { 
+  searchStocks, 
+  SearchResult, 
+  getStockQuote,
+  createPriceAlert,
+  getUserAlerts,
+  cancelAlert,
+  PriceAlert as APIPriceAlert
+} from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface PriceAlert {
@@ -13,18 +21,19 @@ interface PriceAlert {
   currentPrice: number;
   createdAt: string;
   triggered: boolean;
-  notifyEmail: boolean;
-  notifyPush: boolean;
-  email?: string;
+  status: 'active' | 'triggered' | 'expired' | 'cancelled';
 }
 
 export default function AlertsPage() {
   const { user } = useAuth();
   const [alerts, setAlerts] = useState<PriceAlert[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [selectedStock, setSelectedStock] = useState<{ symbol: string; name: string; price: number } | null>(null);
   const [alertForm, setAlertForm] = useState({
     condition: 'above' as 'above' | 'below' | 'percent_up' | 'percent_down',
@@ -33,19 +42,41 @@ export default function AlertsPage() {
     notifyPush: true,
   });
 
-  // Load alerts from localStorage
-  useEffect(() => {
-    const savedAlerts = localStorage.getItem('priceAlerts');
-    if (savedAlerts) {
-      setAlerts(JSON.parse(savedAlerts));
+  // Load alerts from backend API
+  const loadAlerts = useCallback(async () => {
+    if (!user?.id) {
+      setLoading(false);
+      return;
     }
-  }, []);
+    
+    setLoading(true);
+    setError(null);
+    try {
+      const apiAlerts = await getUserAlerts(user.id);
+      // Transform API alerts to component format
+      const transformedAlerts: PriceAlert[] = apiAlerts.map((alert: APIPriceAlert) => ({
+        id: alert.id,
+        symbol: alert.symbol,
+        name: alert.symbol.replace('.NS', '').replace('.BO', ''),
+        condition: alert.condition,
+        targetPrice: alert.target_value,
+        currentPrice: alert.current_price || 0,
+        createdAt: alert.created_at,
+        triggered: alert.status === 'triggered',
+        status: alert.status,
+      }));
+      setAlerts(transformedAlerts);
+    } catch (err) {
+      console.error('Failed to load alerts:', err);
+      setError('Failed to load alerts. Backend server may be unavailable.');
+    } finally {
+      setLoading(false);
+    }
+  }, [user?.id]);
 
-  // Save alerts to localStorage
-  const saveAlerts = (updatedAlerts: PriceAlert[]) => {
-    localStorage.setItem('priceAlerts', JSON.stringify(updatedAlerts));
-    setAlerts(updatedAlerts);
-  };
+  useEffect(() => {
+    loadAlerts();
+  }, [loadAlerts]);
 
   // Search stocks
   const handleSearch = async (query: string) => {
@@ -81,41 +112,52 @@ export default function AlertsPage() {
     }
   };
 
-  // Create alert
-  const createAlert = () => {
-    if (!selectedStock || !alertForm.targetPrice) return;
+  // Create alert via backend API
+  const handleCreateAlert = async () => {
+    if (!selectedStock || !alertForm.targetPrice || !user?.id) return;
 
-    // Use the authenticated user's email for notifications
-    const userEmail = user?.email || '';
+    setCreating(true);
+    setError(null);
+    try {
+      await createPriceAlert({
+        symbol: selectedStock.symbol,
+        condition: alertForm.condition,
+        target_value: parseFloat(alertForm.targetPrice),
+        message: `Alert for ${selectedStock.symbol}`,
+        expires_in_days: 30,
+      }, user.id);
 
-    const newAlert: PriceAlert = {
-      id: Date.now().toString(),
-      symbol: selectedStock.symbol,
-      name: selectedStock.name,
-      condition: alertForm.condition,
-      targetPrice: parseFloat(alertForm.targetPrice),
-      currentPrice: selectedStock.price,
-      createdAt: new Date().toISOString(),
-      triggered: false,
-      notifyEmail: alertForm.notifyEmail,
-      notifyPush: alertForm.notifyPush,
-      email: userEmail,
-    };
-
-    saveAlerts([...alerts, newAlert]);
-    setShowCreateModal(false);
-    setSelectedStock(null);
-    setAlertForm({
-      condition: 'above',
-      targetPrice: '',
-      notifyEmail: true,
-      notifyPush: true,
-    });
+      // Reload alerts from server
+      await loadAlerts();
+      
+      setShowCreateModal(false);
+      setSelectedStock(null);
+      setAlertForm({
+        condition: 'above',
+        targetPrice: '',
+        notifyEmail: true,
+        notifyPush: true,
+      });
+    } catch (err) {
+      console.error('Failed to create alert:', err);
+      setError('Failed to create alert. Please try again.');
+    } finally {
+      setCreating(false);
+    }
   };
 
-  // Delete alert
-  const deleteAlert = (id: string) => {
-    saveAlerts(alerts.filter((a) => a.id !== id));
+  // Delete alert via backend API
+  const deleteAlert = async (id: string) => {
+    if (!user?.id) return;
+    
+    try {
+      await cancelAlert(id, user.id);
+      // Update local state immediately for better UX
+      setAlerts(alerts.filter((a) => a.id !== id));
+    } catch (err) {
+      console.error('Failed to delete alert:', err);
+      setError('Failed to delete alert. Please try again.');
+    }
   };
 
   // Format INR
@@ -143,11 +185,29 @@ export default function AlertsPage() {
     }
   };
 
-  const activeAlerts = alerts.filter((a) => !a.triggered);
-  const triggeredAlerts = alerts.filter((a) => a.triggered);
+  const activeAlerts = alerts.filter((a) => a.status === 'active');
+  const triggeredAlerts = alerts.filter((a) => a.status === 'triggered');
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-500">Loading alerts...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl">
+          {error}
+          <button onClick={() => setError(null)} className="float-right font-bold">&times;</button>
+        </div>
+      )}
+
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Price Alerts</h1>
@@ -189,17 +249,14 @@ export default function AlertsPage() {
                 </div>
                 <div className="flex items-center space-x-4">
                   <div className="text-right">
-                    <div className="text-sm text-gray-500">Current</div>
-                    <div className="font-semibold text-gray-900">{formatINR(alert.currentPrice)}</div>
+                    <div className="text-sm text-gray-500">Target</div>
+                    <div className="font-semibold text-gray-900">
+                      {alert.condition.includes('percent') ? `${alert.targetPrice}%` : formatINR(alert.targetPrice)}
+                    </div>
                   </div>
-                  <div className="flex items-center space-x-2">
-                    {alert.notifyEmail && (
-                      <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">Email</span>
-                    )}
-                    {alert.notifyPush && (
-                      <span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded">Push</span>
-                    )}
-                  </div>
+                  <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full font-medium">
+                    Active
+                  </span>
                   <button
                     onClick={() => deleteAlert(alert.id)}
                     className="p-2 hover:bg-red-100 rounded-xl text-gray-400 hover:text-red-500 transition"
@@ -397,11 +454,18 @@ export default function AlertsPage() {
               </button>
               {selectedStock && (
                 <button
-                  onClick={createAlert}
-                  disabled={!alertForm.targetPrice}
-                  className="flex-1 bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white px-4 py-2.5 rounded-xl font-semibold transition disabled:opacity-50"
+                  onClick={handleCreateAlert}
+                  disabled={!alertForm.targetPrice || creating}
+                  className="flex-1 bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white px-4 py-2.5 rounded-xl font-semibold transition disabled:opacity-50 flex items-center justify-center"
                 >
-                  Create Alert
+                  {creating ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                      Creating...
+                    </>
+                  ) : (
+                    'Create Alert'
+                  )}
                 </button>
               )}
             </div>

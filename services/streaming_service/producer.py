@@ -1,6 +1,7 @@
-"""Stock price producer - fetches prices and publishes to Redpanda."""
+"""Stock price producer - fetches prices and publishes to Kafka (Aiven/Redpanda)."""
 
 import asyncio
+import ssl
 from datetime import datetime
 from typing import Optional
 
@@ -9,6 +10,7 @@ from aiokafka import AIOKafkaProducer
 import json
 
 from shared.config import get_settings
+from shared.events import get_kafka_ssl_context
 
 # Top Indian stocks to stream by default
 DEFAULT_SYMBOLS = [
@@ -22,7 +24,7 @@ TOPIC_STOCK_PRICES = "stock-prices"
 
 
 class StockPriceProducer:
-    """Produces real-time stock prices to Redpanda/Kafka."""
+    """Produces real-time stock prices to Kafka (Aiven/Redpanda)."""
     
     def __init__(self, symbols: Optional[list[str]] = None):
         self.symbols = symbols or DEFAULT_SYMBOLS
@@ -35,11 +37,29 @@ class StockPriceProducer:
     async def start(self) -> bool:
         """Start the producer and streaming loop."""
         try:
-            self._producer = AIOKafkaProducer(
-                bootstrap_servers=self.settings.kafka_brokers,
-                value_serializer=lambda v: json.dumps(v, default=str).encode('utf-8'),
-                key_serializer=lambda k: k.encode('utf-8') if k else None,
-            )
+            # Build Kafka connection config
+            kafka_config = {
+                "bootstrap_servers": self.settings.kafka_brokers,
+                "value_serializer": lambda v: json.dumps(v, default=str).encode('utf-8'),
+                "key_serializer": lambda k: k.encode('utf-8') if k else None,
+            }
+            
+            # Add security config for Aiven/cloud Kafka
+            if self.settings.kafka_security_protocol != "PLAINTEXT":
+                kafka_config["security_protocol"] = self.settings.kafka_security_protocol
+                
+                # SSL context
+                ssl_context = get_kafka_ssl_context(self.settings)
+                if ssl_context:
+                    kafka_config["ssl_context"] = ssl_context
+                
+                # SASL authentication
+                if self.settings.kafka_security_protocol in ("SASL_SSL", "SASL_PLAINTEXT"):
+                    kafka_config["sasl_mechanism"] = self.settings.kafka_sasl_mechanism
+                    kafka_config["sasl_plain_username"] = self.settings.kafka_sasl_username
+                    kafka_config["sasl_plain_password"] = self.settings.kafka_sasl_password
+            
+            self._producer = AIOKafkaProducer(**kafka_config)
             await self._producer.start()
             self._running = True
             print(f"Stock price producer connected to {self.settings.kafka_brokers}")
@@ -80,7 +100,7 @@ class StockPriceProducer:
             if symbol.upper() in self.symbols:
                 self.symbols.remove(symbol.upper())
     
-    async def _stream_loop(self, interval: int = 5) -> None:
+    async def _stream_loop(self, interval: int = 30) -> None:
         """Main loop to fetch and publish prices."""
         print(f"Starting price stream for {len(self.symbols)} symbols, interval={interval}s")
         

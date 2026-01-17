@@ -3,29 +3,48 @@
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import { useState, useEffect } from 'react';
+import { useWebSocket } from '@/hooks/useWebSocket';
 
 export default function Header() {
   const { user, isAuthenticated, logout } = useAuth();
+  const { isConnected } = useWebSocket({ 
+    userId: user?.id,
+    autoConnect: isAuthenticated && !!user?.id 
+  });
   const [showMenu, setShowMenu] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isMarketOpen, setIsMarketOpen] = useState(false);
 
   useEffect(() => {
-    const timer = setInterval(() => {
+    const checkMarketStatus = () => {
       const now = new Date();
       setCurrentTime(now);
       
       // Check if Indian market is open (9:15 AM - 3:30 PM IST, Mon-Fri)
-      const istHours = now.getUTCHours() + 5.5;
-      const istMinutes = (istHours % 1) * 60 + now.getUTCMinutes();
-      const totalMinutes = Math.floor(istHours) * 60 + istMinutes;
-      const day = now.getDay();
+      // Convert current UTC time to IST (UTC+5:30)
+      const utcHours = now.getUTCHours();
+      const utcMinutes = now.getUTCMinutes();
+      const totalUtcMinutes = utcHours * 60 + utcMinutes;
       
-      const marketOpen = 9 * 60 + 15; // 9:15 AM
-      const marketClose = 15 * 60 + 30; // 3:30 PM
+      // IST is UTC + 5:30 (330 minutes)
+      const totalIstMinutes = totalUtcMinutes + 330;
+      const istHours = Math.floor((totalIstMinutes % 1440) / 60); // 1440 = minutes in a day
+      const istMinutes = totalIstMinutes % 60;
+      const currentIstTime = istHours * 60 + istMinutes;
       
-      setIsMarketOpen(day >= 1 && day <= 5 && totalMinutes >= marketOpen && totalMinutes <= marketClose);
-    }, 1000);
+      const day = now.getDay(); // 0 = Sunday, 1-5 = Mon-Fri, 6 = Saturday
+      
+      const marketOpen = 9 * 60 + 15; // 9:15 AM IST = 555 minutes
+      const marketClose = 15 * 60 + 30; // 3:30 PM IST = 930 minutes
+      
+      const isWeekday = day >= 1 && day <= 5;
+      const isDuringHours = currentIstTime >= marketOpen && currentIstTime <= marketClose;
+      
+      setIsMarketOpen(isWeekday && isDuringHours);
+    };
+    
+    checkMarketStatus();
+    const timer = setInterval(checkMarketStatus, 1000);
     
     return () => clearInterval(timer);
   }, []);
@@ -72,6 +91,24 @@ export default function Header() {
                 {isMarketOpen ? 'Market Open' : 'Market Closed'}
               </span>
             </div>
+
+            {/* WebSocket Connection Status */}
+            {isAuthenticated && (
+              <div className={`flex items-center space-x-2 px-3 py-2 rounded-full ${
+                isConnected 
+                  ? 'bg-blue-50 border border-blue-200' 
+                  : 'bg-orange-50 border border-orange-200'
+              }`}>
+                <span className={`w-2 h-2 rounded-full ${
+                  isConnected ? 'bg-blue-500 animate-pulse' : 'bg-orange-400'
+                }`}></span>
+                <span className={`text-xs font-medium ${
+                  isConnected ? 'text-blue-700' : 'text-orange-600'
+                }`}>
+                  {isConnected ? 'Live' : 'Connecting...'}
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Navigation */}
@@ -133,6 +170,12 @@ export default function Header() {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
                           </svg>
                           Dashboard
+                        </Link>
+                        <Link href="/dashboard/profile" className="flex items-center px-4 py-2.5 text-sm text-gray-700 hover:bg-emerald-50 hover:text-emerald-700">
+                          <svg className="w-4 h-4 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                          </svg>
+                          Profile
                         </Link>
                         <Link href="/dashboard/settings" className="flex items-center px-4 py-2.5 text-sm text-gray-700 hover:bg-emerald-50 hover:text-emerald-700">
                           <svg className="w-4 h-4 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">

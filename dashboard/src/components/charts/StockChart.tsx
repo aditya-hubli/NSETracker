@@ -1,7 +1,19 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { createChart, ColorType, IChartApi, LineData, Time, HistogramData } from 'lightweight-charts';
+import { 
+  createChart, 
+  ColorType, 
+  IChartApi, 
+  Time,
+  CandlestickData,
+  LineData,
+  HistogramData,
+  CandlestickSeries,
+  LineSeries,
+  AreaSeries,
+  HistogramSeries,
+} from 'lightweight-charts';
 
 export type ChartType = 'line' | 'candlestick' | 'area';
 export type TimeInterval = '1m' | '5m' | '15m' | '1h' | '1d' | '1w' | '1M';
@@ -60,6 +72,7 @@ export default function StockChart({
       layout: {
         background: { type: ColorType.Solid, color: 'white' },
         textColor: '#333',
+        attributionLogo: false,
       },
       grid: {
         vertLines: { color: '#f0f0f0' },
@@ -108,7 +121,7 @@ export default function StockChart({
       try {
         const { period } = INTERVAL_MAP[interval];
         const response = await fetch(
-          `http://localhost:8000/api/v1/stocks/${encodeURIComponent(symbol)}/history?period=${period}`
+          `http://localhost:8000/api/v1/stocks/history/${encodeURIComponent(symbol)}?period=${period}`
         );
 
         if (!response.ok) throw new Error('Failed to fetch data');
@@ -122,11 +135,12 @@ export default function StockChart({
           return;
         }
 
-        // Create series based on chart type - using legacy API for compatibility
-        // @ts-ignore - Using v4 API for compatibility
-        if (chartType === 'candlestick' && chart.addCandlestickSeries) {
-          // @ts-ignore
-          const series = chart.addCandlestickSeries({
+        // Sort history by date (oldest first) - required by lightweight-charts
+        history.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+        // Create series based on chart type using v5 API
+        if (chartType === 'candlestick') {
+          const series = chart.addSeries(CandlestickSeries, {
             upColor: '#10b981',
             downColor: '#ef4444',
             borderDownColor: '#ef4444',
@@ -135,7 +149,7 @@ export default function StockChart({
             wickUpColor: '#10b981',
           });
 
-          const candleData = history.map((item) => ({
+          const candleData: CandlestickData<Time>[] = history.map((item) => ({
             time: (new Date(item.date).getTime() / 1000) as Time,
             open: parseFloat(item.open),
             high: parseFloat(item.high),
@@ -144,31 +158,28 @@ export default function StockChart({
           }));
 
           series.setData(candleData);
-          // @ts-ignore
-        } else if (chartType === 'area' && chart.addAreaSeries) {
-          // @ts-ignore
-          const series = chart.addAreaSeries({
+        } else if (chartType === 'area') {
+          const series = chart.addSeries(AreaSeries, {
             lineColor: '#10b981',
             topColor: 'rgba(16, 185, 129, 0.4)',
             bottomColor: 'rgba(16, 185, 129, 0.0)',
             lineWidth: 2,
           });
 
-          const lineData: LineData[] = history.map((item) => ({
+          const lineData: LineData<Time>[] = history.map((item) => ({
             time: (new Date(item.date).getTime() / 1000) as Time,
             value: parseFloat(item.close),
           }));
 
           series.setData(lineData);
-          // @ts-ignore
-        } else if (chart.addLineSeries) {
-          // @ts-ignore
-          const series = chart.addLineSeries({
+        } else {
+          // Line chart
+          const series = chart.addSeries(LineSeries, {
             color: '#10b981',
             lineWidth: 2,
           });
 
-          const lineData: LineData[] = history.map((item) => ({
+          const lineData: LineData<Time>[] = history.map((item) => ({
             time: (new Date(item.date).getTime() / 1000) as Time,
             value: parseFloat(item.close),
           }));
@@ -177,25 +188,23 @@ export default function StockChart({
         }
 
         // Add volume histogram if enabled
-        // @ts-ignore
-        if (showVolume && chart.addHistogramSeries) {
-          // @ts-ignore
-          const volumeSeries = chart.addHistogramSeries({
+        if (showVolume) {
+          const volumeSeries = chart.addSeries(HistogramSeries, {
             color: '#d1d5db',
             priceFormat: {
               type: 'volume',
             },
-            priceScaleId: '',
+            priceScaleId: 'volume',
           });
 
-          volumeSeries.priceScale().applyOptions({
+          chart.priceScale('volume').applyOptions({
             scaleMargins: {
               top: 0.8,
               bottom: 0,
             },
           });
 
-          const volumeData: HistogramData[] = history.map((item, index) => {
+          const volumeData: HistogramData<Time>[] = history.map((item, index) => {
             const prevClose = index > 0 ? parseFloat(history[index - 1].close) : parseFloat(item.open);
             const currentClose = parseFloat(item.close);
             return {
