@@ -55,20 +55,19 @@ The platform provides comprehensive access to live market data:
 - Historical price data with customizable date ranges for technical analysis
 - Personalized watchlists for tracking favorite stocks across sessions
 
-### AI-Powered Sentiment Analysis
-Leveraging advanced machine learning models to gauge market sentiment:
-- **FinBERT Integration**: Uses a BERT model specifically fine-tuned on financial text to accurately classify news sentiment as bullish, bearish, or neutral
-- **Multi-Source Aggregation**: Collects and analyzes news from various financial news APIs, RSS feeds, and financial websites
-- **Trending Discovery**: Identifies stocks with unusually high sentiment activity or significant sentiment shifts
-- **Historical Sentiment Tracking**: Maintains sentiment history to identify patterns and sentiment trends over time
+### Sentiment Analysis
+Analyzing market sentiment from financial news:
+- **Rule-Based Analysis**: Uses financial keyword detection to classify news sentiment as bullish, bearish, or neutral
+- **Multi-Source Aggregation**: Collects news from Yahoo Finance API and Google News RSS feeds
+- **Sentiment Scoring**: Aggregates sentiment across multiple news articles for comprehensive analysis
+- **Real-Time Updates**: Fetches latest news and sentiment for selected stocks
 
-### Technical Analysis Suite
-Comprehensive technical indicators for informed trading decisions:
-- **15+ Technical Indicators**: Simple Moving Average (SMA), Exponential Moving Average (EMA), Moving Average Convergence Divergence (MACD), Relative Strength Index (RSI), Bollinger Bands, Average True Range (ATR), Stochastic Oscillator, and more
-- **Automated Signal Generation**: Generates trading signals ranging from Strong Buy to Strong Sell based on indicator confluence
-- **Volume Analysis**: Detects unusual volume spikes and analyzes volume-price relationships
-- **Stock Screener**: Multi-criteria filtering to discover stocks matching specific technical parameters
-- **Market Heatmap**: Visual representation of sector performance and individual stock movements
+### Price Charts
+Interactive stock price visualization:
+- **Multiple Chart Types**: Candlestick, line, and area charts for price analysis
+- **Historical Data**: View price history across multiple time periods (1 day to 5 years)
+- **Volume Display**: Track trading volume alongside price movements
+- **Responsive Design**: Charts adapt to different screen sizes
 
 ### Alerts and Notifications System
 Proactive monitoring and instant notifications:
@@ -101,7 +100,7 @@ The platform follows a microservices architecture with event-driven communicatio
 ┌───────────────┐   ┌─────────────────┐   ┌─────────────────┐
 │ Stock Service │   │ Sentiment       │   │ Notification    │
 │ • Live Quotes │   │ Service         │   │ Service         │
-│ • History     │   │ • FinBERT       │   │ • Email Alerts  │
+│ • History     │   │ • Rule-Based    │   │ • Email Alerts  │
 │ • Watchlists  │   │ • News Fetch    │   │ • WebSocket     │
 └───────────────┘   └─────────────────┘   └─────────────────┘
         │                     │                     │
@@ -144,23 +143,12 @@ The platform follows a microservices architecture with event-driven communicatio
    - Identifies trending stocks based on news volume and sentiment changes
    - Stores sentiment history for pattern analysis
 
-3. **Analytics Service**
-   - Calculates technical indicators using TA-Lib and pandas
-   - Generates trading signals based on indicator confluence
-   - Implements stock screening with customizable filters
-   - Provides volatility analysis and support/resistance levels
-
-4. **Notification Service**
+3. **Notification Service**
    - Monitors price alerts by consuming Kafka events
    - Sends email notifications via Gmail SMTP with HTML templates
    - Manages WebSocket connections for instant in-app notifications
    - Schedules daily digest emails and market timing alerts
    - Tracks notification delivery status
-
-5. **User Service**
-   - Handles user registration, login, and profile management
-   - Integrates with Supabase for JWT token generation and validation
-   - Manages user preferences and notification settings
 
 **Data Layer**
 
@@ -188,7 +176,7 @@ The platform follows a microservices architecture with event-driven communicatio
 | **Frontend** | Next.js 16 | React framework with server-side rendering, optimized for SEO and performance |
 | | TypeScript 5.0+ | Type-safe JavaScript for fewer runtime errors and better IDE support |
 | | Tailwind CSS | Utility-first CSS framework for rapid UI development |
-| | Recharts | Declarative charting library built on React components |
+| | Lightweight Charts | High-performance financial charting library |
 | **Backend** | FastAPI | Modern Python web framework with automatic API documentation and async support |
 | | Python 3.11+ | Latest Python version with performance improvements and type hints |
 | | Uvicorn | Lightning-fast ASGI server for async Python applications |
@@ -197,10 +185,7 @@ The platform follows a microservices architecture with event-driven communicatio
 | | PostgreSQL | Reliable, ACID-compliant relational database |
 | **Messaging** | Apache Kafka | Distributed event streaming platform for building real-time data pipelines |
 | | Aiven Cloud | Managed Kafka service with SSL/TLS security |
-| **AI/ML** | FinBERT | Financial domain BERT model for sentiment analysis |
-| | VADER | Valence Aware Dictionary for sentiment analysis |
-| | TextBlob | Simple API for common NLP tasks |
-| | TA-Lib | Technical analysis library with 150+ indicators |
+| **AI/ML** | FinBERT (Rule-based) | Financial sentiment analysis using keyword-based rules |
 | | Pandas/NumPy | Data manipulation and numerical computing |
 | **Email** | Gmail SMTP | Reliable email delivery with Google's infrastructure |
 | **Deployment** | Render.com | Modern cloud platform with free tier for hobby projects |
@@ -216,7 +201,7 @@ The platform follows a microservices architecture with event-driven communicatio
 
 **Supabase over Traditional PostgreSQL**: Supabase adds authentication, real-time subscriptions, and auto-generated REST APIs on top of PostgreSQL, significantly reducing development time while maintaining full SQL access.
 
-**FinBERT over Generic Sentiment Models**: FinBERT is specifically trained on financial text and understands domain-specific terminology like "bearish," "bullish," "dividend yield," making it far more accurate than general-purpose sentiment models for financial news analysis.
+**Rule-Based Sentiment over Generic Models**: Financial keyword-based sentiment analysis provides fast, reliable results without requiring expensive ML model hosting. The system can be upgraded to FinBERT or similar models when resources allow.
 
 ## Getting Started
 
@@ -387,17 +372,6 @@ Access AI-powered sentiment analysis for stocks:
 | `GET` | `/api/v1/sentiment/trending` | Get stocks with high sentiment activity |
 | `GET` | `/api/v1/sentiment/news/{symbol}` | Get news articles with sentiment scores |
 
-### Technical Analysis Endpoints
-
-Access technical indicators and trading signals:
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/v1/analytics/indicators/{symbol}` | Get all technical indicators (SMA, EMA, MACD, RSI, etc.) |
-| `GET` | `/api/v1/analytics/signal/{symbol}` | Get overall trading signal (Strong Buy to Strong Sell) |
-| `GET` | `/api/v1/analytics/analysis/{symbol}` | Get comprehensive technical analysis report |
-| `POST` | `/api/v1/analytics/screener` | Screen stocks based on custom criteria |
-
 ### Alert Management Endpoints
 
 Create and manage price alerts:
@@ -470,12 +444,6 @@ Real-Time-Event-Driven-Data-Platform/
 │   │   ├── providers.py         # News provider abstractions
 │   │   └── models.py            # Sentiment data models
 │   │
-│   ├── analytics_service/        # Technical Analysis
-│   │   ├── routes.py            # Technical analysis endpoints
-│   │   ├── analyzer.py          # Technical indicator calculations
-│   │   ├── calculator.py        # Trading signal generation
-│   │   └── models.py            # Analytics data models
-│   │
 │   ├── notification_service/     # Alerts and Notifications
 │   │   ├── routes.py            # Notification endpoints
 │   │   ├── email_service.py     # Gmail SMTP integration and templates
@@ -483,16 +451,6 @@ Real-Time-Event-Driven-Data-Platform/
 │   │   ├── websocket_manager.py # WebSocket connection management
 │   │   ├── database.py          # Alert storage operations
 │   │   └── models.py            # Notification data models
-│   │
-│   ├── order_service/            # Trading Order Management (Future)
-│   │   ├── routes.py
-│   │   ├── models.py
-│   │   └── database.py
-│   │
-│   ├── payment_service/          # Payment Processing (Future)
-│   │   ├── routes.py
-│   │   ├── models.py
-│   │   └── database.py
 │   │
 │   └── streaming_service/        # Kafka Event Streaming
 │       ├── producer.py          # Kafka event producer
@@ -528,7 +486,7 @@ Real-Time-Event-Driven-Data-Platform/
 │   │   ├── components/          # Reusable React Components
 │   │   │   ├── layout/          # Header, Sidebar, Footer
 │   │   │   ├── stocks/          # Stock cards, tables, quote displays
-│   │   │   ├── charts/          # Recharts wrapper components
+│   │   │   ├── charts/          # Lightweight Charts components
 │   │   │   └── common/          # Buttons, modals, forms
 │   │   │
 │   │   ├── contexts/            # React Context Providers
@@ -672,26 +630,6 @@ After configuring environment variables, manually trigger a deployment or wait f
    - Set up email alerts for service failures
    - Monitor Supabase dashboard for database performance
 
-### Alternative: Docker Deployment
-
-The project includes `docker-compose.yml` for containerized deployment:
-
-```bash
-# Build and run all services
-docker-compose up -d
-
-# View logs
-docker-compose logs -f
-
-# Stop services
-docker-compose down
-```
-
-This creates three containers:
-- Backend API (FastAPI)
-- Frontend Dashboard (Next.js)
-- PostgreSQL database (if not using Supabase)
-
 ## Configuration Guide
 
 ### Required Configuration
@@ -783,67 +721,17 @@ Kafka enables event-driven architecture for scalable real-time processing:
 
 ### Running Tests
 
-The project includes comprehensive test coverage for all services:
+Basic testing commands:
 
 ```bash
-# Run all tests with verbose output
+# Run all tests
 pytest -v
-
-# Run tests with coverage report
-pytest --cov=services --cov=shared --cov-report=html
 
 # Run tests for a specific service
 pytest services/stock_service/tests/ -v
-
-# Run tests with specific marker
-pytest -m "unit" -v        # Run only unit tests
-pytest -m "integration" -v  # Run only integration tests
-```
-
-### Test Coverage
-
-The test suite covers:
-- Unit tests for individual functions and classes
-- Integration tests for API endpoints
-- Service interaction tests
-- Database operation tests
-- WebSocket connection tests
-- Email notification tests (mocked)
-
-### Code Quality
-
-Maintain code quality with automated tools:
-
-```bash
-# Run linter (ruff)
-make lint
-
-# Auto-format code (black + isort)
-make format
-
-# Type checking with mypy
-mypy services/ shared/
-
-# Security scan
-bandit -r services/ shared/
 ```
 
 ## Development Workflow
-
-### Available Make Commands
-
-The `Makefile` provides convenient commands for common development tasks:
-
-```bash
-make install     # Install Python and Node.js dependencies
-make dev         # Run development servers (backend + frontend)
-make test        # Execute test suite
-make lint        # Run code linters
-make format      # Auto-format code
-make clean       # Remove build artifacts and cache files
-make docker-up   # Start Docker containers
-make docker-down # Stop Docker containers
-```
 
 ### Development Best Practices
 
